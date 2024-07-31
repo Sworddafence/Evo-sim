@@ -6,6 +6,8 @@ import os
 import time
 import neat
 import pickle
+
+
 # Inputs:
     # Number of food seen
     # Time Since last ate
@@ -18,6 +20,10 @@ import pickle
     # Left
     # Right
 
+
+#GLOBAL VAR
+TOTAL_WIDTH = 1000
+TOTAL_HEIGHT = 1000
 
 class Blob:
     def __init__(self, x, y):
@@ -34,6 +40,9 @@ class Blob:
         self.diff_angle = 180
         self.hunger = 0
         self.food_eaten = set()
+        self.regions_been = set()
+        self.region_in = 5
+        self.nearest_wall = 500
 
     # def move(self, keys):
     #     if keys[K_a]:
@@ -76,6 +85,30 @@ class Blob:
             radian_angle = math.radians(self.angle)
             self.x -= self.speed * math.cos(radian_angle)
             self.y += self.speed * math.sin(radian_angle)
+
+    def get_region(self):
+
+
+        if(self.x < 0 or self.x > 1000 or self.y < 0 or self.y > 1000):
+            return -1
+
+        region_width = TOTAL_WIDTH // 3
+        region_height = TOTAL_HEIGHT // 3
+
+        col = self.x // region_width
+        row = self.y // region_height
+        self.region_in = int(row * 3 + col)
+        return int(row * 3 + col)
+
+
+    def distance_to_nearest_wall(self):
+        distances = [
+            self.x,  # Distance to the left wall
+            self.y,  # Distance to the top wall
+            TOTAL_WIDTH - self.x,  # Distance to the right wall
+            TOTAL_HEIGHT - self.y  # Distance to the bottom wall
+        ]
+        self.nearest_wall = min(distances)
 
     def update_vision(self, food_list):
         self.num_food_seen = 0
@@ -172,11 +205,12 @@ class App:
 
     def on_loop(self):
         for blob in self.blobs:
-            inputs = [blob.num_food_seen, blob.hunger, blob.dist_food, blob.diff_angle]
+            inputs = [blob.num_food_seen, blob.hunger, blob.dist_food, blob.diff_angle, blob.nearest_wall, blob.region_in]
             output = blob.net.activate(inputs)
             blob.move(output)
             blob.update_vision(self.food_list)
-
+            v = blob.get_region()
+            blob.regions_been.add(v)
             for food in self.food_list[:]:
                 if blob.check_collision(food, self._image_surf, self.food_surf):
                     blob.hunger = 0
@@ -216,7 +250,11 @@ class App:
 
         pygame.draw.polygon(self._display_surf, (0, 255, 0, 50), cone_points, 1)
 
-    def on_cleanup(self):
+    def on_cleanup(self): 
+        for blob in self.blobs:
+            blob.genome.fitness += len(blob.regions_been)
+            if(-1 in blob.regions_been):
+                blob.genome.fitness -= 5
         pygame.quit()
 
     def on_execute(self, genomes, config):
@@ -226,7 +264,7 @@ class App:
             self._running = False
 
         tick = 0
-        while tick < 3000:
+        while tick < 30000:
             for event in pygame.event.get():
                 self.on_event(event)
             self.on_loop()
